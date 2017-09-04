@@ -75,20 +75,33 @@ void Cam2VR::start()
 
 void Cam2VR::createActions()
 {
-    fullscreenAct = new QAction(tr("&Fullscreen"), this);
-    fullscreenAct->setStatusTip(tr("Go fullscreen"));
-    connect(fullscreenAct, &QAction::triggered, this, &Cam2VR::goFullScreen);
+    fullscreenAct0 = new QAction(tr("&Fullscreen 0"), this);
+    fullscreenAct0->setStatusTip(tr("Go fullscreen 0"));
+    connect(fullscreenAct0, &QAction::triggered, this, &Cam2VR::goFullScreen0);
+
+    fullscreenAct1 = new QAction(tr("&Fullscreen 1"), this);
+    fullscreenAct1->setStatusTip(tr("Go fullscreen 1"));
+    connect(fullscreenAct1, &QAction::triggered, this, &Cam2VR::goFullScreen1);
 }
 
 void Cam2VR::createMenus()
 {
     showMenu = menuBar()->addMenu(tr("&Show"));
-    showMenu->addAction(fullscreenAct);
+    showMenu->addAction(fullscreenAct0);
+    showMenu->addAction(fullscreenAct1);
 }
 
-void Cam2VR::goFullScreen()
+void Cam2VR::goFullScreen0()
 {
-    qDebug() << "go fullscreen";
+    qDebug() << "go fullscreen 0";
+    this->windowHandle()->setScreen(qApp->screens()[0]);
+    showFullScreen();
+}
+
+void Cam2VR::goFullScreen1()
+{
+    qDebug() << "go fullscreen 1";
+    this->windowHandle()->setScreen(qApp->screens()[1]);
     showFullScreen();
 }
 
@@ -102,8 +115,13 @@ void Cam2VR::keyPressEvent(QKeyEvent *event)
         showNormal();
         break;
 
-    case Qt::Key_F:
+    case Qt::Key_0:
         this->windowHandle()->setScreen(qApp->screens()[0]);
+        showFullScreen();
+        break;
+
+    case Qt::Key_1:
+        this->windowHandle()->setScreen(qApp->screens()[1]);
         showFullScreen();
         break;
     }

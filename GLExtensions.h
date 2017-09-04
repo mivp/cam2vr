@@ -124,6 +124,12 @@ typedef void (APIENTRYP PFNGLFRAMEBUFFERTEXTURE2DEXTPROC) (GLenum target, GLenum
 typedef void (APIENTRYP PFNGLFRAMEBUFFERRENDERBUFFEREXTPROC) (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 typedef void (APIENTRYP PFNGLBLITFRAMEBUFFEREXTPROC) (GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 
+//ADDED
+typedef GLint (APIENTRYP PFNGLGETATTRIBLOCATIONPROC) (GLuint program,const GLchar *name);
+typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC) (GLuint index);
+typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC) (GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid * pointer);
+typedef void (APIENTRYP PFNGLUNIFORM4FVPROC) (GLint location, GLsizei count, const GLfloat *value);
+
 extern PFNGLGENFRAMEBUFFERSEXTPROC glGenFramebuffersEXT;
 extern PFNGLGENRENDERBUFFERSEXTPROC glGenRenderbuffersEXT;
 extern PFNGLBINDRENDERBUFFEREXTPROC glBindRenderbufferEXT;
@@ -156,6 +162,12 @@ extern PFNGLUSEPROGRAMPROC glUseProgram;
 extern PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
 extern PFNGLUNIFORM1IPROC glUniform1i;
 extern PFNGLUNIFORM1FPROC glUniform1f;
+
+//ADDED
+extern PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+extern PFNGLUNIFORM4FVPROC glUniform4fv;
 
 bool ResolveGLExtensions(const QGLContext* context);
 

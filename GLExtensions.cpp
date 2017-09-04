@@ -64,6 +64,12 @@ PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
 PFNGLUNIFORM1IPROC glUniform1i;
 PFNGLUNIFORM1FPROC glUniform1f;
 
+// Added
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+PFNGLUNIFORM4FVPROC glUniform4fv;
+
 bool ResolveGLExtensions(const QGLContext* context)
 {
 	glGenFramebuffersEXT = (PFNGLGENFRAMEBUFFERSEXTPROC) context->getProcAddress("glGenFramebuffersEXT");
@@ -99,6 +105,13 @@ bool ResolveGLExtensions(const QGLContext* context)
 	glUniform1i = (PFNGLUNIFORM1IPROC) context->getProcAddress("glUniform1i");
 	glUniform1f = (PFNGLUNIFORM1FPROC) context->getProcAddress("glUniform1f");
 
+    //added
+    glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC) context->getProcAddress("glGetAttribLocation");
+    glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) context->getProcAddress("glEnableVertexAttribArray");
+    glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC) context->getProcAddress("glVertexAttribPointer");
+    glUniform4fv = (PFNGLUNIFORM4FVPROC) context->getProcAddress("glUniform4fv");
+
+
 	return	glGenFramebuffersEXT
 			&& glGenRenderbuffersEXT
 			&& glBindRenderbufferEXT
@@ -131,5 +144,9 @@ bool ResolveGLExtensions(const QGLContext* context)
 			&& glGetUniformLocation
 			&& glUniform1i
 			&& glUniform1f
+            && glGetAttribLocation
+            && glEnableVertexAttribArray
+            && glVertexAttribPointer
+            && glUniform4fv
 			;
 }

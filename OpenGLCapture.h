@@ -28,6 +28,7 @@
 #ifndef __OPENGL_COMPOSITE_H__
 #define __OPENGL_COMPOSITE_H__
 
+#include "DeviceInfo.h"
 #include "DeckLinkAPI.h"
 #include <QGLWidget>
 #include <QMutex>
@@ -38,6 +39,8 @@
 
 class CaptureDelegate;
 class PinnedMemoryAllocator;
+
+using namespace cam2vr;
 
 class OpenGLCapture : public QGLWidget
 {
@@ -59,6 +62,10 @@ private:
 	virtual void paintGL();
 	virtual void resizeGL(int width, int height);
 
+    // VR
+    void setTextureBounds();
+    void computeMeshVertices(int width, int height);
+    void computeMeshIndices(int width, int height);
     void drawFrame();
 
 private slots:
@@ -86,14 +93,23 @@ private:
 	GLuint									mIdColorBuf;
 	GLuint									mIdDepthBuf;
 	GLuint									mProgram;
+    GLuint                                  mVertexShader;
 	GLuint									mFragmentShader;
-	GLfloat									mRotateAngle;
-	GLfloat									mRotateAngleRate;
-	int										mViewWidth;
+    int										mViewWidth;
 	int										mViewHeight;
 
 	bool InitOpenGLState();
 	bool compileFragmentShader(int errorMessageSize, char* errorMessage);
+
+    // VR
+    int                                     m_meshWidth, m_meshHeight;
+    float                                   m_bufferScale;
+    float                                   m_viewportOffsetScale[8];
+    DeviceInfo*                             m_deviceInfo;
+    unsigned int                            m_vbo;
+    unsigned int                            m_ibo;
+    std::vector<float>                      m_vertices;
+    std::vector<unsigned int>               m_indices;
 };
 
 ////////////////////////////////////////////

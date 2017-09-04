@@ -54,7 +54,8 @@ protected:
     void keyPressEvent(QKeyEvent *event);
 
 private slots:
-    void goFullScreen();
+    void goFullScreen0();
+    void goFullScreen1();
 
 private:
     void createActions();
@@ -66,7 +67,8 @@ private:
 
     //gui
     QMenu *showMenu;
-    QAction *fullscreenAct;
+    QAction *fullscreenAct0;
+    QAction *fullscreenAct1;
 };
 
 #endif // __LOOP_THROUGH_WITH_OPENGL_COMPOSITING_H__

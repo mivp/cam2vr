@@ -28,6 +28,7 @@
 #include "OpenGLCapture.h"
 #include "GLExtensions.h"
 #include <GL/glu.h>
+#include <QtOpenGL/QGLWidget>
 
 OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	QGLWidget(parent), mParent(parent),
@@ -38,8 +39,8 @@ OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	mHasNoInputSource(true),
 	mPinnedMemoryExtensionAvailable(false),
 	mTexture(0),
-	mRotateAngle(0.0f),
-	mRotateAngleRate(0.0f)
+    //VR
+    m_meshWidth(20), m_meshHeight(20), m_bufferScale(0.5)
 {
 	ResolveGLExtensions(context());
 
@@ -47,6 +48,12 @@ OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	qRegisterMetaType<IDeckLinkVideoInputFrame*>("IDeckLinkVideoInputFrame*");
 	qRegisterMetaType<IDeckLinkVideoFrame*>("IDeckLinkVideoFrame*");
 	qRegisterMetaType<BMDOutputFrameCompletionResult>("BMDOutputFrameCompletionResult");
+
+    //VR
+    m_deviceInfo = new DeviceInfo();
+    setTextureBounds();
+    computeMeshVertices(m_meshWidth, m_meshHeight);
+    computeMeshIndices(m_meshWidth, m_meshHeight);
 }
 
 OpenGLCapture::~OpenGLCapture()
@@ -71,7 +78,7 @@ bool OpenGLCapture::InitDeckLink()
 	IDeckLink*						pDL = NULL;
     IDeckLinkDisplayModeIterator*	pDLDisplayModeIterator = NULL;
     IDeckLinkDisplayMode*			pDLDisplayMode = NULL;
-    BMDDisplayMode					displayMode = bmdModeHD1080i6000; //bmdModeNTSC;		// mode to use for capture and playout
+    BMDDisplayMode					displayMode = bmdModeHD1080i6000; //bmdModeHD1080i5994; //bmdModeHD1080p30; //bmdModeHD1080i6000;
 	float							fps;
 
 	pDLIterator = CreateDeckLinkIteratorInstance();
@@ -125,7 +132,7 @@ bool OpenGLCapture::InitDeckLink()
 	// Compute a rotate angle rate so box will spin at a rate independent of video mode frame rate
 	pDLDisplayMode->GetFrameRate(&mFrameDuration, &mFrameTimescale);
 	fps = (float)mFrameTimescale / (float)mFrameDuration;
-	mRotateAngleRate = 35.0f / fps;			// rotate box through 35 degrees every second
+    //mRotateAngleRate = 35.0f / fps;			// rotate box through 35 degrees every second
 
 	// resize window to match video frame, but scale large formats down by half for viewing
 	if (mFrameWidth < 1920)
@@ -280,8 +287,162 @@ bool OpenGLCapture::InitOpenGLState()
 		return false;
 	}
 
+    // VR
+    if(m_vertices.size() < 1)
+    {
+        QMessageBox::critical(NULL, "No vertices", "OpenGL initialization error.");
+        return false;
+    }
+    // create vbo
+    glGenBuffers(1,&m_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float)*m_vertices.size(), &m_vertices[0], GL_STATIC_DRAW);
+
+    unsigned int val;
+    val = glGetAttribLocation(mProgram, "position");
+    glEnableVertexAttribArray(val);
+    glVertexAttribPointer( val,  2, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)0);
+
+    val = glGetAttribLocation(mProgram, "texCoord");
+    glEnableVertexAttribArray(val);
+    glVertexAttribPointer( val,  3, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)(2*sizeof(float)));
+
+    // create ibo
+    glGenBuffers(1,&m_ibo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int)*m_indices.size(), &m_indices[0], GL_STATIC_DRAW);
+
+
 	return true;
 }
+
+//VR
+void OpenGLCapture::setTextureBounds()
+{
+    float leftBounds[] = {0, 0, 0.5, 1};
+    float rightBounds[] = {0.5, 0, 0.5, 1};
+
+    // Left eye
+    m_viewportOffsetScale[0] = leftBounds[0]; // X
+    m_viewportOffsetScale[1] = leftBounds[1]; // Y
+    m_viewportOffsetScale[2] = leftBounds[2]; // Width
+    m_viewportOffsetScale[3] = leftBounds[3]; // Height
+
+    // Right eye
+    m_viewportOffsetScale[4] = rightBounds[0]; // X
+    m_viewportOffsetScale[5] = rightBounds[1]; // Y
+    m_viewportOffsetScale[6] = rightBounds[2]; // Width
+    m_viewportOffsetScale[7] = rightBounds[3]; // Height
+}
+
+float lerp(float a, float b, float t) {
+    return a + ((b - a) * t);
+}
+
+void OpenGLCapture::computeMeshVertices(int width, int height)
+{
+    m_vertices.resize(2 * width * height * 5);
+
+    float lensFrustum[4];
+    m_deviceInfo->getLeftEyeVisibleTanAngles(lensFrustum);
+
+    float noLensFrustum[4];
+    m_deviceInfo->getLeftEyeNoLensTanAngles(noLensFrustum);
+
+    float viewport[4];
+    m_deviceInfo->getLeftEyeVisibleScreenRect(noLensFrustum, viewport);
+    //viewport[4]: x, y, width, height
+
+    float vidx = 0;
+    float iidx = 0;
+    for (int e = 0; e < 2; e++) {
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++, vidx++) {
+                float u = 1.0 * i / (width - 1);
+                float v = 1.0 * j / (height - 1);
+
+                // Grid points regularly spaced in StreoScreen, and barrel distorted in
+                // the mesh.
+                float s = u;
+                float t = v;
+                float x = lerp(lensFrustum[0], lensFrustum[2], u);
+                float y = lerp(lensFrustum[3], lensFrustum[1], v);
+                float d = sqrt(x * x + y * y);
+                float r = m_deviceInfo->distortInverse(d);
+                float p = x * r / d;
+                float q = y * r / d;
+                u = (p - noLensFrustum[0]) / (noLensFrustum[2] - noLensFrustum[0]);
+                v = (q - noLensFrustum[3]) / (noLensFrustum[1] - noLensFrustum[3]);
+
+                // Convert u,v to mesh screen coordinates.
+                float aspect = m_deviceInfo->getDevice().widthMeters / m_deviceInfo->getDevice().heightMeters;
+
+                // FIXME: The original Unity plugin multiplied U by the aspect ratio
+                // and didn't multiply either value by 2, but that seems to get it
+                // really close to correct looking for me. I hate this kind of "Don't
+                // know why it works" code though, and wold love a more logical
+                // explanation of what needs to happen here.
+                u = (viewport[0] + u * viewport[2] - 0.5) * 2.0; // * aspect;
+                v = (viewport[1] + v * viewport[3] - 0.5) * 2.0;
+
+                m_vertices[(vidx * 5) + 0] = u; // position.x
+                m_vertices[(vidx * 5) + 1] = v; // position.y
+                m_vertices[(vidx * 5) + 2] = s; // texCoord.x
+                m_vertices[(vidx * 5) + 3] = t; // texCoord.y
+                m_vertices[(vidx * 5) + 4] = e; // texCoord.z (viewport index)
+
+                //cout << u << " " << v << endl;
+            }
+        }
+        float w = lensFrustum[2] - lensFrustum[0];
+        lensFrustum[0] = -(w + lensFrustum[0]);
+        lensFrustum[2] = w - lensFrustum[2];
+        w = noLensFrustum[2] - noLensFrustum[0];
+        noLensFrustum[0] = -(w + noLensFrustum[0]);
+        noLensFrustum[2] = w - noLensFrustum[2];
+        viewport[0] = 1 - (viewport[0] + viewport[2]);
+    }
+}
+
+void OpenGLCapture::computeMeshIndices(int width, int height)
+{
+    m_indices.resize(2 * (width - 1) * (height - 1) * 6);
+
+    float halfwidth = width / 2;
+    float halfheight = height / 2;
+    float vidx = 0;
+    float iidx = 0;
+    for (int e = 0; e < 2; e++) {
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++, vidx++) {
+                if (i == 0 || j == 0)
+                  continue;
+                // Build a quad.  Lower right and upper left quadrants have quads with
+                // the triangle diagonal flipped to get the vignette to interpolate
+                // correctly.
+                if ((i <= halfwidth) == (j <= halfheight)) {
+                    // Quad diagonal lower left to upper right.
+                    m_indices[iidx++] = vidx;
+                    m_indices[iidx++] = vidx - width - 1;
+                    m_indices[iidx++] = vidx - width;
+                    m_indices[iidx++] = vidx - width - 1;
+                    m_indices[iidx++] = vidx;
+                    m_indices[iidx++] = vidx - 1;
+                } else {
+                    // Quad diagonal upper left to lower right.
+                    m_indices[iidx++] = vidx - 1;
+                    m_indices[iidx++] = vidx - width;
+                    m_indices[iidx++] = vidx;
+                    m_indices[iidx++] = vidx - width;
+                    m_indices[iidx++] = vidx - 1;
+                    m_indices[iidx++] = vidx - width - 1;
+                }
+            }
+        }
+    }
+}
+
+
 
 //
 // Update the captured video frame texture
@@ -346,7 +507,15 @@ void OpenGLCapture::drawFrame()
 	// Draw OpenGL scene to the off-screen frame buffer
 	glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, mIdFrameBuf);
 
+    GLfloat aspectRatio = (GLfloat)mFrameWidth / (GLfloat)mFrameHeight;
+    glViewport (0, 0, mFrameWidth, mFrameHeight);
+
+    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    glScalef( aspectRatio, 1.0f, 1.0f );
+    glFinish();
+
 	// Setup view and projection
+    /*
 	GLfloat aspectRatio = (GLfloat)mFrameWidth / (GLfloat)mFrameHeight;
 	glViewport (0, 0, mFrameWidth, mFrameHeight);
 	glMatrixMode( GL_PROJECTION );
@@ -361,26 +530,7 @@ void OpenGLCapture::drawFrame()
 	glRotatef( mRotateAngle, 1.0f, 1.0f, 1.0f );	// Rotate model around a vector
 	mRotateAngle -= mRotateAngleRate;				// update the rotation angle for next iteration
 	glFinish();										// Ensure changes to GL state are complete
-
-	// Draw a colourful frame around the front face of the box
-	// (provides a pleasing nesting effect when you connect the playout output to the capture input)
-	glBegin(GL_QUAD_STRIP);
-	glColor3f( 1.0f, 0.0f, 0.0f );
-	glVertex3f( 1.2f,  1.2f, 1.0f);
-	glVertex3f( 1.0f,  1.0f, 1.0f);
-	glColor3f( 0.0f, 0.0f, 1.0f );
-	glVertex3f( 1.2f, -1.2f, 1.0f);
-	glVertex3f( 1.0f, -1.0f, 1.0f);
-	glColor3f( 0.0f, 1.0f, 0.0f );
-	glVertex3f(-1.2f, -1.2f, 1.0f);
-	glVertex3f(-1.0f, -1.0f, 1.0f);
-	glColor3f( 1.0f, 1.0f, 0.0f );
-	glVertex3f(-1.2f,  1.2f, 1.0f);
-	glVertex3f(-1.0f,  1.0f, 1.0f);
-	glColor3f( 1.0f, 0.0f, 0.0f );
-	glVertex3f( 1.2f,  1.2f, 1.0f);
-	glVertex3f( 1.0f,  1.0f, 1.0f);
-	glEnd();
+    */
 
 	if (mHasNoInputSource)
 	{
@@ -409,35 +559,15 @@ void OpenGLCapture::drawFrame()
 		GLint locUYVYtex = glGetUniformLocation(mProgram, "UYVYtex");
 		glUniform1i(locUYVYtex, 0);		// Bind texture unit 0
 
-		// Draw front and back faces of box applying video texture to each face
-		glBegin(GL_QUADS);
-		glTexCoord2f(1.0f, 0.0f);	glVertex3f(  1.0f,  1.0f,  1.0f );		// Top right of front side
-		glTexCoord2f(0.0f, 0.0f);	glVertex3f( -1.0f,  1.0f,  1.0f );		// Top left of front side
-		glTexCoord2f(0.0f, 1.0f);	glVertex3f( -1.0f, -1.0f,  1.0f );		// Bottom left of front side
-		glTexCoord2f(1.0f, 1.0f);	glVertex3f(  1.0f, -1.0f,  1.0f );		// Bottom right of front side
+        GLint locOffset = glGetUniformLocation(mProgram, "viewportOffsetScale");
+        glUniform4fv(locOffset, 2, m_viewportOffsetScale);
 
-		glTexCoord2f(1.0f, 1.0f);	glVertex3f(  1.0f, -1.0f, -1.0f );		// Top right of back side
-		glTexCoord2f(0.0f, 1.0f);	glVertex3f( -1.0f, -1.0f, -1.0f );		// Top left of back side
-		glTexCoord2f(0.0f, 0.0f);	glVertex3f( -1.0f,  1.0f, -1.0f );		// Bottom left of back side
-		glTexCoord2f(1.0f, 0.0f);	glVertex3f(  1.0f,  1.0f, -1.0f );		// Bottom right of back side
-		glEnd();
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ibo);
+        glDrawElements( GL_TRIANGLES, m_indices.size(), GL_UNSIGNED_INT, (void*)0 );
 
-		// Draw left and right sides of box with partially transparent video texture
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glBegin(GL_QUADS);
-		glTexCoord2f(0.1f, 0.0f);	glVertex3f( -1.0f,  1.0f,  1.0f );		// Top right of left side
-		glTexCoord2f(1.0f, 0.0f);	glVertex3f( -1.0f,  1.0f, -1.0f );		// Top left of left side
-		glTexCoord2f(1.0f, 1.0f);	glVertex3f( -1.0f, -1.0f, -1.0f );		// Bottom left of left side
-		glTexCoord2f(0.1f, 1.0f);	glVertex3f( -1.0f, -1.0f,  1.0f );		// Bottom right of left side
-
-		glTexCoord2f(1.0f, 0.0f);	glVertex3f(  1.0f,  1.0f, -1.0f );		// Top right of right side
-		glTexCoord2f(0.0f, 0.0f);	glVertex3f(  1.0f,  1.0f,  1.0f );		// Top left of right side
-		glTexCoord2f(0.0f, 1.0f);	glVertex3f(  1.0f, -1.0f,  1.0f );		// Bottom left of right side
-		glTexCoord2f(1.0f, 1.0f);	glVertex3f(  1.0f, -1.0f, -1.0f );		// Bottom right of right side
-		glEnd();
-		glDisable(GL_BLEND);
-
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		glUseProgram(0);
 		glDisable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, 0);
@@ -468,9 +598,28 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 {
 	GLsizei		errorBufferSize;
 	GLint		compileResult, linkResult;
+
+    const char* vertexSource =
+        "#version 130 \n"
+
+        "attribute vec2 position; \n"
+        "attribute vec3 texCoord; \n"
+
+        "varying vec2 vTexCoord; \n"
+
+        "uniform vec4 viewportOffsetScale[2]; \n"
+
+        "void main() { \n"
+        "    vec4 viewport = viewportOffsetScale[int(texCoord.z)]; \n"
+        "    vTexCoord = (texCoord.xy * viewport.zw) + viewport.xy; \n"
+        "    vTexCoord.y = 1 - vTexCoord.y; \n"
+        "    gl_Position = vec4( position, 1.0, 1.0 ); \n"
+        "} \n";
+
 	const char*	fragmentSource =
 		"#version 130 \n"
 		"uniform sampler2D UYVYtex; \n"		// UYVY macropixel texture passed as RGBA format
+        "varying vec2 vTexCoord; \n"
 
 		"vec4 rec709YCbCr2rgba(float Y, float Cb, float Cr, float a) \n"
 		"{ \n"
@@ -518,12 +667,12 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 		/* The shader uses texelFetch to obtain the YUV macropixels to avoid unwanted interpolation
 		 * introduced by the GPU interpreting the YUV data as RGBA pixels.
 		 * The YUV macropixels are converted into individual RGB pixels and bilinear interpolation is applied. */
-		"	vec2 tc = gl_TexCoord[0].st; \n"
+        "	//vec2 tc = gl_TexCoord[0].st; \n"
 		"	float alpha = 0.7; \n"
 
 		"	vec4 macro, macro_u, macro_r, macro_ur;\n"
 		"	vec4 pixel, pixel_r, pixel_u, pixel_ur; \n"
-		"	textureGatherYUV(UYVYtex, tc, macro, macro_u, macro_ur, macro_r);\n"
+        "	textureGatherYUV(UYVYtex, vTexCoord, macro, macro_u, macro_ur, macro_r);\n"
 
 		//   Select the components for the bilinear interpolation based on the texture coordinate
 		//   location within the YUV macropixel:
@@ -534,7 +683,7 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 		//   |-------|-------|          ----------------------
 		//   | RG/BA | RG/BA |
 		//   -----------------
-		"	vec2 off = fract(tc * textureSize(UYVYtex, 0)); \n"
+        "	vec2 off = fract(vTexCoord * textureSize(UYVYtex, 0)); \n"
 		"	if (off.x > 0.5) { \n"			// right half of macropixel
 		"		pixel = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); \n"
 		"		pixel_r = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); \n"
@@ -550,20 +699,31 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 		"	gl_FragColor = bilinear(pixel, pixel_u, pixel_ur, pixel_r, off); \n"
 		"}\n";
 
-	mFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    mVertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(mVertexShader, 1, (const GLchar**)&vertexSource, NULL);
+    glCompileShader(mVertexShader);
+    glGetShaderiv(mVertexShader, GL_COMPILE_STATUS, &compileResult);
+    if (compileResult == GL_FALSE)
+    {
+        glGetShaderInfoLog(mVertexShader, errorMessageSize, &errorBufferSize, errorMessage);
+        qDebug() << errorMessage;
+        return false;
+    }
 
+	mFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	glShaderSource(mFragmentShader, 1, (const GLchar**)&fragmentSource, NULL);
 	glCompileShader(mFragmentShader);
-
 	glGetShaderiv(mFragmentShader, GL_COMPILE_STATUS, &compileResult);
 	if (compileResult == GL_FALSE)
 	{
 		glGetShaderInfoLog(mFragmentShader, errorMessageSize, &errorBufferSize, errorMessage);
+        qDebug() << errorMessage;
 		return false;
 	}
 
 	mProgram = glCreateProgram();
 
+    glAttachShader(mProgram, mVertexShader);
 	glAttachShader(mProgram, mFragmentShader);
 	glLinkProgram(mProgram);
 
@@ -571,6 +731,7 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 	if (linkResult == GL_FALSE)
 	{
 		glGetProgramInfoLog(mProgram, errorMessageSize, &errorBufferSize, errorMessage);
+        qDebug() << errorMessage;
 		return false;
 	}
 
