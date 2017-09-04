@@ -18,4 +18,4 @@ SOURCES 	= 	main.cpp \
                         GLExtensions.cpp \
                         DeviceInfo.cpp
 
-FORMS 		= 	cam2vr.ui
+FORMS 		= 

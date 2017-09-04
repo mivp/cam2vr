@@ -37,15 +37,11 @@
 
 Cam2VR::Cam2VR() : QMainWindow(), pOpenGLCapture(NULL)
 {
-    //ui = new Ui::Cam2VRDialog();
-    //ui->setupUi(this);
-
     createActions();
     createMenus();
 
     pOpenGLCapture = new OpenGLCapture(this);
 
-    //ui->verticalLayout->addWidget(pOpenGLCapture);
     setCentralWidget(pOpenGLCapture);
 
     if (!pOpenGLCapture->InitDeckLink())
@@ -62,9 +58,6 @@ Cam2VR::~Cam2VR()
         delete pOpenGLCapture;
         pOpenGLCapture = NULL;
 	}
-
-	delete ui;
-	ui = NULL;
 }
 
 void Cam2VR::start()

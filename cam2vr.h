@@ -38,8 +38,6 @@
 #include <QAction>
 #include <QMainWindow>
 
-#include "ui_cam2vr.h"
-
 class OpenGLCapture;
 
 class Cam2VR : public QMainWindow
@@ -62,7 +60,6 @@ private:
     void createMenus();
 
 private:
-    Ui::Cam2VRDialog*	ui;
     OpenGLCapture*	pOpenGLCapture;
 
     //gui
