@@ -24,10 +24,6 @@
  ** DEALINGS IN THE SOFTWARE.
  ** -LICENSE-END-
  */
-//
-// GLExtensions.h
-// LoopThroughWithOpenGLCompositing
-//
 
 #ifndef __GLEXTENSIONS_H__
 #define __GLEXTENSIONS_H__

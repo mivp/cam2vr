@@ -227,16 +227,7 @@ int OpenGLCapture::getModeList(int device, std::vector<std::string>& modes)
             tmp.append(patch::to_string(fps));
             tmp.append("fps");
             modes.push_back(tmp);
-            /*
-            fprintf(stderr,
-                "        %2d:  %-20s \t %li x %li \t %g FPS\n",
-                displayModeCount,
-                displayModeName,
-                displayModeUsage->GetWidth(),
-                displayModeUsage->GetHeight(),
-                (double)frameRateScale / (double)frameRateDuration
-            );
-            */
+
             free(displayModeName);
         }
 
@@ -697,24 +688,6 @@ void OpenGLCapture::drawFrame()
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glScalef( aspectRatio, 1.0f, 1.0f );
     glFinish();
-
-	// Setup view and projection
-    /*
-	GLfloat aspectRatio = (GLfloat)mFrameWidth / (GLfloat)mFrameHeight;
-	glViewport (0, 0, mFrameWidth, mFrameHeight);
-	glMatrixMode( GL_PROJECTION );
-	glLoadIdentity();
-	gluPerspective( 45.0f, aspectRatio, 0.1f, 100.0f );
-	glMatrixMode( GL_MODELVIEW );
-	glLoadIdentity();
-
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	glScalef( aspectRatio, 1.0f, 1.0f );			// Scale x for correct aspect ratio
-	glTranslatef( 0.0f, 0.0f, -4.0f );				// Move into screen
-	glRotatef( mRotateAngle, 1.0f, 1.0f, 1.0f );	// Rotate model around a vector
-	mRotateAngle -= mRotateAngleRate;				// update the rotation angle for next iteration
-	glFinish();										// Ensure changes to GL state are complete
-    */
 
 	if (mHasNoInputSource)
 	{

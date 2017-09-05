@@ -24,10 +24,6 @@
  ** DEALINGS IN THE SOFTWARE.
  ** -LICENSE-END-
  */
-//
-// main.cpp
-// LoopThroughWithOpenGLCompositing
-//
 
 #include <QApplication>
 #include "cam2vr.h"

@@ -24,10 +24,7 @@
  ** DEALINGS IN THE SOFTWARE.
  ** -LICENSE-END-
  */
-//
-// LoopThroughWithOpenGLCompositing.h
-// LoopThroughWithOpenGLCompositing
-//
+
 
 #ifndef __LOOP_THROUGH_WITH_OPENGL_COMPOSITING_H__
 #define __LOOP_THROUGH_WITH_OPENGL_COMPOSITING_H__
