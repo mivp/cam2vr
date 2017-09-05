@@ -1,6 +1,8 @@
 # cam2vr
 3D Cam to VR (Google cardboard)
 
+**Contact**: Toan Nguyen ([http://monash.edu/mivp](http://monash.edu/mivp))
+
 **Ref**
 - webvr-polyfill
 
