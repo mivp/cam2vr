@@ -29,6 +29,18 @@
 #include "GLExtensions.h"
 #include <GL/glu.h>
 #include <QtOpenGL/QGLWidget>
+#include <string>
+#include <sstream>
+
+namespace patch
+{
+    template < typename T > std::string to_string( const T& n )
+    {
+        std::ostringstream stm ;
+        stm << n ;
+        return stm.str() ;
+    }
+}
 
 OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	QGLWidget(parent), mParent(parent),
@@ -71,7 +83,186 @@ OpenGLCapture::~OpenGLCapture()
 	delete mCaptureAllocator;
 }
 
-bool OpenGLCapture::InitDeckLink()
+int OpenGLCapture::getDeviceList(std::vector<std::string>& devices)
+{
+    devices.clear();
+
+    HRESULT result = E_FAIL;
+    IDeckLinkIterator* deckLinkIterator = CreateDeckLinkIteratorInstance();
+
+    IDeckLink* deckLink = NULL;
+    char* deckLinkName = NULL;
+
+    // Loop through all available devices
+    while (deckLinkIterator->Next(&deckLink) == S_OK)
+    {
+        result = deckLink->GetModelName((const char**)&deckLinkName);
+        if (result == S_OK)
+        {
+            devices.push_back(deckLinkName);
+            //fprintf(stderr, "        %2d: %s%s\n", deckLinkCount, deckLinkName, deckLinkCount == m_deckLinkIndex ? " (selected)" : "");
+            free(deckLinkName);
+        }
+        deckLink->Release();
+    }
+
+    if (deckLinkIterator != NULL)
+        deckLinkIterator->Release();
+
+    return 0;
+}
+
+ IDeckLink* OpenGLCapture::getDeckLink(int idx)
+ {
+     HRESULT			result;
+     IDeckLink*			deckLink;
+     IDeckLinkIterator*	deckLinkIterator = CreateDeckLinkIteratorInstance();
+     int				i = idx;
+
+     while((result = deckLinkIterator->Next(&deckLink)) == S_OK)
+     {
+         if (i == 0)
+             break;
+         --i;
+
+         deckLink->Release();
+     }
+
+     deckLinkIterator->Release();
+
+     if (result != S_OK)
+         return NULL;
+
+     return deckLink;
+}
+
+ IDeckLinkDisplayMode* OpenGLCapture::getDeckLinkDisplayMode(IDeckLink* deckLink, int idx)
+ {
+     HRESULT						result;
+     IDeckLinkDisplayMode*			displayMode = NULL;
+     IDeckLinkInput*				deckLinkInput = NULL;
+     IDeckLinkDisplayModeIterator*	displayModeIterator = NULL;
+     int							i = idx;
+
+     result = deckLink->QueryInterface(IID_IDeckLinkInput, (void**)&deckLinkInput);
+     if (result != S_OK)
+         goto bail;
+
+     result = deckLinkInput->GetDisplayModeIterator(&displayModeIterator);
+     if (result != S_OK)
+         goto bail;
+
+     while ((result = displayModeIterator->Next(&displayMode)) == S_OK)
+     {
+         if (i == 0)
+             break;
+         --i;
+
+         displayMode->Release();
+     }
+
+     if (result != S_OK)
+         goto bail;
+
+ bail:
+     if (displayModeIterator)
+         displayModeIterator->Release();
+
+     if (deckLinkInput)
+         deckLinkInput->Release();
+
+     return displayMode;
+ }
+
+int OpenGLCapture::getModeList(int device, std::vector<std::string>& modes)
+{
+    HRESULT result =                E_FAIL;
+    IDeckLinkDisplayModeIterator*	displayModeIterator = NULL;
+    IDeckLinkAttributes*			deckLinkAttributes = NULL;
+    bool							formatDetectionSupported;
+    IDeckLinkInput*					deckLinkInput = NULL;
+    IDeckLinkDisplayMode*			displayModeUsage;
+    int								displayModeCount = 0;
+    char*							displayModeName;
+
+    IDeckLink* deckLinkSelected = getDeckLink(device);
+
+    if(!deckLinkSelected)
+        return 1;
+
+    modes.clear();
+
+    result = deckLinkSelected->QueryInterface(IID_IDeckLinkAttributes, (void**)&deckLinkAttributes);
+    if (result == S_OK)
+    {
+        result = deckLinkAttributes->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &formatDetectionSupported);
+        if (result == S_OK && formatDetectionSupported)
+            fprintf(stderr, "        -1:  auto detect format\n");
+    }
+
+    result = deckLinkSelected->QueryInterface(IID_IDeckLinkInput, (void**)&deckLinkInput);
+    if (result != S_OK)
+        goto bail;
+
+    result = deckLinkInput->GetDisplayModeIterator(&displayModeIterator);
+    if (result != S_OK)
+        goto bail;
+
+    while (displayModeIterator->Next(&displayModeUsage) == S_OK)
+    {
+        result = displayModeUsage->GetName((const char **)&displayModeName);
+        if (result == S_OK)
+        {
+            BMDTimeValue frameRateDuration;
+            BMDTimeValue frameRateScale;
+
+            displayModeUsage->GetFrameRate(&frameRateDuration, &frameRateScale);
+            string tmp = displayModeName;
+            tmp.append(" ");
+            tmp.append(patch::to_string(displayModeUsage->GetWidth()));
+            tmp.append("x");
+            tmp.append(patch::to_string(displayModeUsage->GetHeight()));
+            double fps = (double)frameRateScale / (double)frameRateDuration;
+            tmp.append(" ");
+            tmp.append(patch::to_string(fps));
+            tmp.append("fps");
+            modes.push_back(tmp);
+            /*
+            fprintf(stderr,
+                "        %2d:  %-20s \t %li x %li \t %g FPS\n",
+                displayModeCount,
+                displayModeName,
+                displayModeUsage->GetWidth(),
+                displayModeUsage->GetHeight(),
+                (double)frameRateScale / (double)frameRateDuration
+            );
+            */
+            free(displayModeName);
+        }
+
+        displayModeUsage->Release();
+        ++displayModeCount;
+    }
+
+    return 0;
+
+    bail:
+        if (displayModeIterator != NULL)
+            displayModeIterator->Release();
+
+        if (deckLinkInput != NULL)
+            deckLinkInput->Release();
+
+        if (deckLinkAttributes != NULL)
+            deckLinkAttributes->Release();
+
+        if (deckLinkSelected != NULL)
+            deckLinkSelected->Release();
+
+        return 1;
+}
+
+bool OpenGLCapture::InitDeckLink(int device, int mode)
 {
 	bool							bSuccess = false;
 	IDeckLinkIterator*				pDLIterator = NULL;
@@ -88,16 +279,16 @@ bool OpenGLCapture::InitDeckLink()
 		return false;
 	}
 
-	while (pDLIterator->Next(&pDL) == S_OK)
-	{
-        // Use first board found as capture device
-        if (! mDLInput)
-		{
-			if (pDL->QueryInterface(IID_IDeckLinkInput, (void**)&mDLInput) != S_OK)
-				goto error;
-		}
-	}
+    pDL = getDeckLink(device);
 
+    if(mDLInput) {
+        mDLInput->StopStreams();
+        mDLInput->DisableVideoInput();
+        mDLInput->Release();
+        mDLInput = NULL;
+    }
+
+    pDL->QueryInterface(IID_IDeckLinkInput, (void**)&mDLInput);
     if (! mDLInput)
 	{
         QMessageBox::critical(NULL, "Expected Input DeckLink devices", "This application requires DeckLink device.");
@@ -110,21 +301,14 @@ bool OpenGLCapture::InitDeckLink()
         goto error;
     }
 
-    while (pDLDisplayModeIterator->Next(&pDLDisplayMode) == S_OK)
-    {
-        if (pDLDisplayMode->GetDisplayMode() == displayMode)
-            break;
-
-        pDLDisplayMode->Release();
-        pDLDisplayMode = NULL;
-    }
-    pDLDisplayModeIterator->Release();
-
+    pDLDisplayMode = getDeckLinkDisplayMode(pDL, mode);
     if (pDLDisplayMode == NULL)
     {
         QMessageBox::critical(NULL, "Cannot get specified BMDDisplayMode.", "DeckLink error.");
         goto error;
     }
+
+    displayMode = pDLDisplayMode->GetDisplayMode();
 
 	mFrameWidth = pDLDisplayMode->GetWidth();
 	mFrameHeight = pDLDisplayMode->GetHeight();

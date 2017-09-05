@@ -38,7 +38,8 @@ int main(int argc, char *argv[])
 	QApplication app(argc, argv);
 
     Cam2VR cam2vr;
-    cam2vr.start();
+    cam2vr.show();
+    //cam2vr.start();
 
 	return app.exec();
 }

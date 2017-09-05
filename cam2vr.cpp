@@ -34,8 +34,9 @@
 
 #include <QtWidgets>
 #include <QDebug>
+#include <QInputDialog>
 
-Cam2VR::Cam2VR() : QMainWindow(), pOpenGLCapture(NULL)
+Cam2VR::Cam2VR() : QMainWindow(), pOpenGLCapture(NULL), m_device(DEFAULT_DEVICE), m_mode(DEFAULT_MODE)
 {
     createActions();
     createMenus();
@@ -44,10 +45,13 @@ Cam2VR::Cam2VR() : QMainWindow(), pOpenGLCapture(NULL)
 
     setCentralWidget(pOpenGLCapture);
 
-    if (!pOpenGLCapture->InitDeckLink())
-		exit(0);
+    pOpenGLCapture->getDeviceList(m_deviceList);
+    pOpenGLCapture->getModeList(m_device, m_modeList);
+    updateTitle();
 
-    show();
+    if (!pOpenGLCapture->InitDeckLink(m_device, m_mode))
+        exit(0);
+    start();
 }
 
 Cam2VR::~Cam2VR()
@@ -68,20 +72,130 @@ void Cam2VR::start()
 
 void Cam2VR::createActions()
 {
-    fullscreenAct0 = new QAction(tr("&Fullscreen 0"), this);
+    captureSelectDeviceAct = new QAction(tr("Select &device"), this);
+    captureSelectDeviceAct->setStatusTip(tr("Select device"));
+    connect(captureSelectDeviceAct, &QAction::triggered, this, &Cam2VR::captureSelectDevice);
+
+    captureSelectModeAct = new QAction(tr("Select &mode"), this);
+    captureSelectModeAct->setStatusTip(tr("Select video mode"));
+    connect(captureSelectModeAct, &QAction::triggered, this, &Cam2VR::captureSelectMode);
+
+    captureStartAct = new QAction(tr("&Start"), this);
+    captureStartAct->setStatusTip(tr("Start capture"));
+    connect(captureStartAct, &QAction::triggered, this, &Cam2VR::captureStart);
+
+    captureStopAct = new QAction(tr("S&top"), this);
+    captureStopAct->setStatusTip(tr("Stop capture"));
+    connect(captureStopAct, &QAction::triggered, this, &Cam2VR::captureStop);
+
+
+    fullscreenAct0 = new QAction(tr("Fullscreen &0"), this);
     fullscreenAct0->setStatusTip(tr("Go fullscreen 0"));
     connect(fullscreenAct0, &QAction::triggered, this, &Cam2VR::goFullScreen0);
 
-    fullscreenAct1 = new QAction(tr("&Fullscreen 1"), this);
+    fullscreenAct1 = new QAction(tr("Fullscreen &1"), this);
     fullscreenAct1->setStatusTip(tr("Go fullscreen 1"));
     connect(fullscreenAct1, &QAction::triggered, this, &Cam2VR::goFullScreen1);
 }
 
 void Cam2VR::createMenus()
 {
+    captureMenu = menuBar()->addMenu(tr("&Capture"));
+    captureMenu->addAction(captureSelectDeviceAct);
+    captureMenu->addAction(captureSelectModeAct);
+    captureMenu->addSeparator();
+    captureMenu->addAction(captureStartAct);
+    captureMenu->addAction(captureStopAct);
+
     showMenu = menuBar()->addMenu(tr("&Show"));
     showMenu->addAction(fullscreenAct0);
     showMenu->addAction(fullscreenAct1);
+}
+
+void Cam2VR::updateTitle()
+{
+    QString title = "";
+
+    if(m_deviceList.size() && m_device < m_deviceList.size()) {
+        title = "Device: (" + QString::number(m_device) +") " + m_deviceList[m_device].c_str();
+    }
+
+    if(m_modeList.size() && m_mode < m_modeList.size()) {
+        title += " | Mode: (" + QString::number(m_mode) + ") " + m_modeList[m_mode].c_str();
+    }
+
+    this->setWindowTitle(title);
+}
+
+void Cam2VR::captureStart()
+{
+    if (!pOpenGLCapture->InitDeckLink(m_device, m_mode))
+        exit(0);
+    start();
+}
+
+void Cam2VR::captureStop()
+{
+    pOpenGLCapture->Stop();
+}
+
+void Cam2VR::captureSelectDevice()
+{
+    pOpenGLCapture->getDeviceList(m_deviceList);
+    QStringList items;
+    for(int i=0; i < m_deviceList.size(); i++)
+        items << tr(m_deviceList[i].c_str());
+
+    bool ok;
+    QString item = QInputDialog::getItem(this, tr("Select device"),
+                                             tr("Device:"), items, m_device, false, &ok);
+    int idx = 0;
+    if (ok && !item.isEmpty()) {
+        int prev_device = m_device;
+        foreach(const QString &str, items) {
+            if (str == item) {
+                m_device = idx;
+                break;
+            }
+            idx++;
+        }
+        if(prev_device != m_device) {
+            updateTitle();
+            if (!pOpenGLCapture->InitDeckLink(m_device, m_mode))
+                exit(0);
+            start();
+        }
+    }
+}
+
+void Cam2VR::captureSelectMode()
+{
+    pOpenGLCapture->getModeList(m_device, m_modeList);
+    QStringList items;
+    for(int i=0; i < m_modeList.size(); i++)
+        items << tr(m_modeList[i].c_str());
+
+    bool ok;
+    QString item = QInputDialog::getItem(this, tr("Select device"),
+                                             tr("Device:"), items, m_mode, false, &ok);
+    int idx = 0;
+    if (ok && !item.isEmpty()) {
+        int prev_mode = m_mode;
+        foreach(const QString &str, items) {
+            if (str == item) {
+                m_mode = idx;
+                break;
+            }
+            idx++;
+        }
+
+        if(prev_mode != m_mode) {
+            updateTitle();
+            if (!pOpenGLCapture->InitDeckLink(m_device, m_mode))
+                exit(0);
+            start();
+        }
+    }
 }
 
 void Cam2VR::goFullScreen0()
@@ -103,6 +217,10 @@ void Cam2VR::keyPressEvent(QKeyEvent *event)
     qDebug() << "key pressed" << event->key();
     switch (event->key())
     {
+    case Qt::Key_S:
+        start();
+        break;
+
     case Qt::Key_Escape:
     case Qt::Key_N:
         showNormal();

@@ -36,11 +36,15 @@
 #include <map>
 #include <vector>
 #include <deque>
+#include <string>
 
 class CaptureDelegate;
 class PinnedMemoryAllocator;
 
 using namespace cam2vr;
+
+#define DEFAULT_DEVICE 0
+#define DEFAULT_MODE 12
 
 class OpenGLCapture : public QGLWidget
 {
@@ -50,12 +54,18 @@ public:
 	OpenGLCapture(QWidget *parent = NULL);
 	~OpenGLCapture();
 
-	bool InitDeckLink();
+    bool InitDeckLink(int device = DEFAULT_DEVICE, int mode = DEFAULT_MODE);
 	bool Start();
 	bool Stop();
 
+    int getDeviceList(std::vector<std::string>& devices);
+    int getModeList(int device, std::vector<std::string>& modes);
+
 private:
 	bool CheckOpenGLExtensions();
+
+    IDeckLink* getDeckLink(int idx);
+    IDeckLinkDisplayMode* getDeckLinkDisplayMode(IDeckLink* deckLink, int idx);
 
 	// QGLWidget virtual methods
 	virtual void initializeGL();

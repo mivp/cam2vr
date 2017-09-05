@@ -38,6 +38,9 @@
 #include <QAction>
 #include <QMainWindow>
 
+#include <vector>
+#include <string>
+
 class OpenGLCapture;
 
 class Cam2VR : public QMainWindow
@@ -52,17 +55,34 @@ protected:
     void keyPressEvent(QKeyEvent *event);
 
 private slots:
+    void captureSelectDevice();
+    void captureSelectMode();
+    void captureStart();
+    void captureStop();
     void goFullScreen0();
     void goFullScreen1();
 
 private:
     void createActions();
     void createMenus();
+    void updateTitle();
 
 private:
     OpenGLCapture*	pOpenGLCapture;
 
+    //capture
+    int m_device;
+    int m_mode;
+    std::vector<std::string> m_deviceList;
+    std::vector<std::string> m_modeList;
+
     //gui
+    QMenu *captureMenu;
+    QAction *captureSelectDeviceAct;
+    QAction *captureSelectModeAct;
+    QAction *captureStartAct;
+    QAction *captureStopAct;
+
     QMenu *showMenu;
     QAction *fullscreenAct0;
     QAction *fullscreenAct1;
