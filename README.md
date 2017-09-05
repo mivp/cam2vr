@@ -12,4 +12,11 @@
 
 ## Compile
 
-- Linux: open pro file with qtcreator and compile
+- Linux (tested with Qt5):
+```
+cd cam2vr
+mkdir build
+cd build
+qmake ../cam2vr.pro
+make
+```
