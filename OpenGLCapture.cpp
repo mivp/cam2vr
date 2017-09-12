@@ -624,7 +624,7 @@ void OpenGLCapture::computeMeshIndices(int width, int height)
 //
 void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool hasNoInputSource)
 {
-	mMutex.lock();
+    mMutex.lock();
 
 	mHasNoInputSource = hasNoInputSource;
 
@@ -666,7 +666,7 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 
     drawFrame();
 
-	mMutex.unlock();
+    mMutex.unlock();
 	inputFrame->Release();
 }
 

@@ -44,7 +44,7 @@ class PinnedMemoryAllocator;
 using namespace cam2vr;
 
 #define DEFAULT_DEVICE 0
-#define DEFAULT_MODE 12
+#define DEFAULT_MODE 11
 
 class OpenGLCapture : public QGLWidget
 {
