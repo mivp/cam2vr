@@ -42,6 +42,50 @@ namespace patch
     }
 }
 
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
+{
+    // yuv_len: number of bytes
+    int B_Cb128,R_Cr128,G_CrCb128;
+    int Y0,U,Y1,V;
+    int R,G,B;
+
+    unsigned char *yuv_index;
+    unsigned char *rgb_index;
+
+    yuv_index = pbYUV;
+    rgb_index = pbRGB;
+
+    for (int i = 0, j = 0; i < yuv_len; ) {
+        U  = (int)((float)yuv_index[i++]-128.0f);
+        Y0 = (int)(1.164f * ((float)pbYUV[i++]-16.0f));
+        V  = (int)((float)yuv_index[i++]-128.0f);
+        Y1 = (int)(1.164f * ((float)yuv_index[i++]-16.0f));
+
+        R_Cr128   =  (int)(1.596f*V);
+        G_CrCb128 = (int)(-0.813f*V - 0.391f*U);
+        B_Cb128   =  (int)(2.018f*U);
+
+        R= Y0 + R_Cr128;
+        G = Y0 + G_CrCb128;
+        B = Y0 + B_Cb128;
+
+        rgb_index[j++] = MAX(0, MIN(R, 255));
+        rgb_index[j++] = MAX(0, MIN(G, 255));
+        rgb_index[j++] = MAX(0, MIN(B, 255));
+
+        R= Y1 + R_Cr128;
+        G = Y1 + G_CrCb128;
+        B = Y1 + B_Cb128;
+
+        rgb_index[j++] = MAX(0, MIN(R, 255));
+        rgb_index[j++] = MAX(0, MIN(G, 255));
+        rgb_index[j++] = MAX(0, MIN(B, 255));
+    }
+}
+
+
 OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	QGLWidget(parent), mParent(parent),
     mCaptureDelegate(NULL),
@@ -52,7 +96,8 @@ OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	mPinnedMemoryExtensionAvailable(false),
 	mTexture(0),
     //VR
-    m_meshWidth(20), m_meshHeight(20), m_bufferScale(0.5)
+    m_meshWidth(20), m_meshHeight(20), m_bufferScale(0.5),
+    mFrameCount(0), mRgbImageData(0)
 {
 	ResolveGLExtensions(context());
 
@@ -81,6 +126,9 @@ OpenGLCapture::~OpenGLCapture()
 
 	delete mCaptureDelegate;
 	delete mCaptureAllocator;
+
+    if(mRgbImageData)
+        free(mRgbImageData);
 }
 
 int OpenGLCapture::getDeviceList(std::vector<std::string>& devices)
@@ -408,12 +456,13 @@ bool OpenGLCapture::InitOpenGLState()
 	}
 
 	// Setup the scene
-	glShadeModel( GL_SMOOTH );					// Enable smooth shading
+    //glShadeModel( GL_SMOOTH );					// Enable smooth shading
 	glClearColor( 0.0f, 0.0f, 0.0f, 0.5f );		// Black background
-	glClearDepth( 1.0f );						// Depth buffer setup
-	glEnable( GL_DEPTH_TEST );					// Enable depth testing
-	glDepthFunc( GL_LEQUAL );					// Type of depth test to do
-	glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+    //glClearDepth( 1.0f );						// Depth buffer setup
+    //glEnable( GL_DEPTH_TEST );					// Enable depth testing
+    //glDepthFunc( GL_LEQUAL );					// Type of depth test to do
+    //glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
+    glHint( GL_LINE_SMOOTH_HINT, GL_NICEST );
 
 	if (! mPinnedMemoryExtensionAvailable)
 	{
@@ -434,7 +483,11 @@ bool OpenGLCapture::InitOpenGLState()
 	// Create texture with empty data, we will update it using glTexSubImage2D each frame.
 	// The captured video is YCbCr 4:2:2 packed into a UYVY macropixel.  OpenGL has no YCbCr format
 	// so treat it as RGBA 4:4:4:4 by halving the width and using GL_RGBA internal format.
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mFrameWidth/2, mFrameHeight, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mFrameWidth/2, mFrameHeight, 0, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+
+    //RGB texture
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, mFrameWidth, mFrameHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
@@ -628,9 +681,27 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 
 	mHasNoInputSource = hasNoInputSource;
 
-	long textureSize = inputFrame->GetRowBytes() * inputFrame->GetHeight();
+    mFrameCount++;
+
+    long textureSize = inputFrame->GetWidth() * inputFrame->GetHeight() * 3;
 	void* videoPixels;
 	inputFrame->GetBytes(&videoPixels);
+
+    //deinterface
+    unsigned char* idx1 = (unsigned char*)videoPixels;
+    unsigned int pitch = inputFrame->GetWidth() * 2;
+    for(int i=0; i < inputFrame->GetHeight(); i+=2) {
+        unsigned char* idx2 = idx1 + pitch;
+        memcpy(idx2, idx1, pitch);
+        idx1 += 2*pitch;
+    }
+
+    //convert YUV -> RGB
+    if(mFrameCount == 1)
+        mRgbImageData = (unsigned char*)malloc(inputFrame->GetWidth()*inputFrame->GetHeight()*3);
+
+    YUV422UYVY_ToRGB24((unsigned char*)videoPixels, mRgbImageData, inputFrame->GetWidth()*inputFrame->GetHeight()*2);
+
 
 	makeCurrent();
 
@@ -640,17 +711,17 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 	{
 		// Use a normal texture buffer
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mUnpinnedTextureBuffer);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, textureSize, videoPixels, GL_DYNAMIC_DRAW);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER, textureSize, mRgbImageData, GL_DYNAMIC_DRAW);
 	}
 	else
 	{
 		// Use a pinned buffer for the GL_PIXEL_UNPACK_BUFFER target
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mCaptureAllocator->bufferObjectForPinnedAddress(textureSize, videoPixels));
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mCaptureAllocator->bufferObjectForPinnedAddress(textureSize, mRgbImageData));
 	}
 	glBindTexture(GL_TEXTURE_2D, mTexture);
 
 	// NULL for last arg indicates use current GL_PIXEL_UNPACK_BUFFER target as texture data
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mFrameWidth/2, mFrameHeight, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, NULL);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, mFrameWidth, mFrameHeight, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
 	if (mPinnedMemoryExtensionAvailable)
 	{
@@ -713,7 +784,7 @@ void OpenGLCapture::drawFrame()
 		glEnable(GL_TEXTURE_2D);
 		glBindTexture(GL_TEXTURE_2D, mTexture);
 		glUseProgram(mProgram);
-		GLint locUYVYtex = glGetUniformLocation(mProgram, "UYVYtex");
+        GLint locUYVYtex = glGetUniformLocation(mProgram, "diffuse");
 		glUniform1i(locUYVYtex, 0);		// Bind texture unit 0
 
         GLint locOffset = glGetUniformLocation(mProgram, "viewportOffsetScale");
@@ -757,7 +828,7 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
 	GLint		compileResult, linkResult;
 
     const char* vertexSource =
-        "#version 130 \n"
+        "#version 120 \n"
 
         "attribute vec2 position; \n"
         "attribute vec3 texCoord; \n"
@@ -774,87 +845,15 @@ bool OpenGLCapture::compileFragmentShader(int errorMessageSize, char* errorMessa
         "} \n";
 
 	const char*	fragmentSource =
-		"#version 130 \n"
-		"uniform sampler2D UYVYtex; \n"		// UYVY macropixel texture passed as RGBA format
+        "#version 120 \n"
+
+        "uniform sampler2D diffuse; \n"
+
         "varying vec2 vTexCoord; \n"
 
-		"vec4 rec709YCbCr2rgba(float Y, float Cb, float Cr, float a) \n"
-		"{ \n"
-		"	float r, g, b; \n"
-		// Y: Undo 1/256 texture value scaling and scale [16..235] to [0..1] range
-		// C: Undo 1/256 texture value scaling and scale [16..240] to [-0.5 .. + 0.5] range
-		"	Y = (Y * 256.0 - 16.0) / 219.0; \n"
-		"	Cb = (Cb * 256.0 - 16.0) / 224.0 - 0.5; \n"
-		"	Cr = (Cr * 256.0 - 16.0) / 224.0 - 0.5; \n"
-		// Convert to RGB using Rec.709 conversion matrix (see eq 26.7 in Poynton 2003)
-		"	r = Y + 1.5748 * Cr; \n"
-		"	g = Y - 0.1873 * Cb - 0.4681 * Cr; \n"
-		"	b = Y + 1.8556 * Cb; \n"
-		"	return vec4(r, g, b, a); \n"
-		"}\n"
-
-		// Perform bilinear interpolation between the provided components.
-		// The samples are expected as shown:
-		// ---------
-		// | X | Y |
-		// |---+---|
-		// | W | Z |
-		// ---------
-		"vec4 bilinear(vec4 W, vec4 X, vec4 Y, vec4 Z, vec2 weight) \n"
-		"{\n"
-		"	vec4 m0 = mix(W, Z, weight.x);\n"
-		"	vec4 m1 = mix(X, Y, weight.x);\n"
-		"	return mix(m0, m1, weight.y); \n"
-		"}\n"
-
-		// Gather neighboring YUV macropixels from the given texture coordinate
-		"void textureGatherYUV(sampler2D UYVYsampler, vec2 tc, out vec4 W, out vec4 X, out vec4 Y, out vec4 Z) \n"
-		"{\n"
-		"	ivec2 tx = ivec2(tc * textureSize(UYVYsampler, 0));\n"
-		"	ivec2 tmin = ivec2(0,0);\n"
-		"	ivec2 tmax = textureSize(UYVYsampler, 0) - ivec2(1,1);\n"
-		"	W = texelFetch(UYVYsampler, tx, 0); \n"
-		"	X = texelFetch(UYVYsampler, clamp(tx + ivec2(0,1), tmin, tmax), 0); \n"
-		"	Y = texelFetch(UYVYsampler, clamp(tx + ivec2(1,1), tmin, tmax), 0); \n"
-		"	Z = texelFetch(UYVYsampler, clamp(tx + ivec2(1,0), tmin, tmax), 0); \n"
-		"}\n"
-
-		"void main(void) \n"
-		"{\n"
-		/* The shader uses texelFetch to obtain the YUV macropixels to avoid unwanted interpolation
-		 * introduced by the GPU interpreting the YUV data as RGBA pixels.
-		 * The YUV macropixels are converted into individual RGB pixels and bilinear interpolation is applied. */
-        "	//vec2 tc = gl_TexCoord[0].st; \n"
-		"	float alpha = 0.7; \n"
-
-		"	vec4 macro, macro_u, macro_r, macro_ur;\n"
-		"	vec4 pixel, pixel_r, pixel_u, pixel_ur; \n"
-        "	textureGatherYUV(UYVYtex, vTexCoord, macro, macro_u, macro_ur, macro_r);\n"
-
-		//   Select the components for the bilinear interpolation based on the texture coordinate
-		//   location within the YUV macropixel:
-		//   -----------------          ----------------------
-		//   | UY/VY | UY/VY |          | macro_u | macro_ur |
-		//   |-------|-------|    =>    |---------|----------|
-		//   | UY/VY | UY/VY |          | macro   | macro_r  |
-		//   |-------|-------|          ----------------------
-		//   | RG/BA | RG/BA |
-		//   -----------------
-        "	vec2 off = fract(vTexCoord * textureSize(UYVYtex, 0)); \n"
-		"	if (off.x > 0.5) { \n"			// right half of macropixel
-		"		pixel = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); \n"
-		"		pixel_r = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); \n"
-		"		pixel_u = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); \n"
-		"		pixel_ur = rec709YCbCr2rgba(macro_ur.g, macro_ur.b, macro_ur.r, alpha); \n"
-		"	} else { \n"					// left half & center of macropixel
-		"		pixel = rec709YCbCr2rgba(macro.g, macro.b, macro.r, alpha); \n"
-		"		pixel_r = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); \n"
-		"		pixel_u = rec709YCbCr2rgba(macro_u.g, macro_u.b, macro_u.r, alpha); \n"
-		"		pixel_ur = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); \n"
-		"	}\n"
-
-		"	gl_FragColor = bilinear(pixel, pixel_u, pixel_ur, pixel_r, off); \n"
-		"}\n";
+        "void main() { \n"
+        "    gl_FragColor = texture2D(diffuse, vTexCoord); \n"
+        "} \n";
 
     mVertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(mVertexShader, 1, (const GLchar**)&vertexSource, NULL);

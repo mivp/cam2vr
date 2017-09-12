@@ -94,6 +94,8 @@ private:
     unsigned								mFrameWidth;
 	unsigned								mFrameHeight;
 	bool									mHasNoInputSource;
+    unsigned int                            mFrameCount;
+    unsigned char*                          mRgbImageData;
 
 	// OpenGL data
 	bool									mPinnedMemoryExtensionAvailable;
