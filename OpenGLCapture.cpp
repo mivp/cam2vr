@@ -31,6 +31,7 @@
 #include <QtOpenGL/QGLWidget>
 #include <string>
 #include <sstream>
+#include <iostream>
 
 namespace patch
 {
@@ -44,7 +45,7 @@ namespace patch
 
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
-void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
+static void YUV422UYVY_ToRGB24(const unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
 {
     // yuv_len: number of bytes
     int B_Cb128,R_Cr128,G_CrCb128;
@@ -54,7 +55,7 @@ void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
     unsigned char *yuv_index;
     unsigned char *rgb_index;
 
-    yuv_index = pbYUV;
+    yuv_index = (unsigned char*)pbYUV;
     rgb_index = pbRGB;
 
     for (int i = 0, j = 0; i < yuv_len; ) {
@@ -85,6 +86,8 @@ void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
     }
 }
 
+
+#define DROP_THRESHOLD 0.95
 
 OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	QGLWidget(parent), mParent(parent),
@@ -356,6 +359,8 @@ bool OpenGLCapture::InitDeckLink(int device, int mode)
 	pDLDisplayMode->GetFrameRate(&mFrameDuration, &mFrameTimescale);
 	fps = (float)mFrameTimescale / (float)mFrameDuration;
     //mRotateAngleRate = 35.0f / fps;			// rotate box through 35 degrees every second
+
+	m_displayFPS = fps;
 
 	// resize window to match video frame, but scale large formats down by half for viewing
 	if (mFrameWidth < 1920)
@@ -671,6 +676,12 @@ void OpenGLCapture::computeMeshIndices(int width, int height)
 }
 
 
+unsigned int OpenGLCapture::getTime() {
+    struct timeval tp;
+    gettimeofday(&tp, 0);
+    return (tp.tv_sec * 1000 + tp.tv_usec / 1000);
+}
+
 
 //
 // Update the captured video frame texture
@@ -681,13 +692,52 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 
 	mHasNoInputSource = hasNoInputSource;
 
-    mFrameCount++;
+    if (mFrameCount == 0) {
+	   BMDTimeValue hframedur;
+	   HRESULT h = inputFrame->GetHardwareReferenceTimestamp(mFrameTimescale, &m_startOfTime, &hframedur);
+       m_lastFrameTime = getTime();
 
+       mRgbImageData = (unsigned char*)malloc(inputFrame->GetWidth()*inputFrame->GetHeight()*3);
+    }
+
+    // check if we need to skip this frame
+    bool skip = false;
+    BMDTimeScale htimeScale = mFrameTimescale;
+    BMDTimeValue hframeTime;
+    BMDTimeValue hframeDuration;
+    HRESULT h = inputFrame->GetHardwareReferenceTimestamp(htimeScale, &hframeTime, &hframeDuration);
+    if (h == S_OK) {
+        double frametime = (double)(hframeTime-m_startOfTime) / (double)hframeDuration;	
+        double instantfps = 1000.0/(getTime()-m_lastFrameTime);
+        if (frametime > mFrameCount) {
+	        skip = true;
+	        mFrameCount++;	
+        }
+    	if (instantfps <= m_displayFPS*DROP_THRESHOLD) {
+    	    skip = true;
+    	    mFrameCount++;
+    	}
+	   m_lastFrameTime = getTime();
+    }
+    
+    if (skip) {
+	   std::cout << ".";
+       mMutex.unlock();
+	   return;
+    }
+   
+    if (m_displayFPS >= 50.0 && mFrameCount%2 == 0) {
+        mFrameCount++;
+        mMutex.unlock();
+	    return;
+    }
+    
     long textureSize = inputFrame->GetWidth() * inputFrame->GetHeight() * 3;
 	void* videoPixels;
 	inputFrame->GetBytes(&videoPixels);
 
     //deinterface
+    /*
     unsigned char* idx1 = (unsigned char*)videoPixels;
     unsigned int pitch = inputFrame->GetWidth() * 2;
     for(int i=0; i < inputFrame->GetHeight(); i+=2) {
@@ -695,12 +745,9 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
         memcpy(idx2, idx1, pitch);
         idx1 += 2*pitch;
     }
-
+    */
     //convert YUV -> RGB
-    if(mFrameCount == 1)
-        mRgbImageData = (unsigned char*)malloc(inputFrame->GetWidth()*inputFrame->GetHeight()*3);
-
-    YUV422UYVY_ToRGB24((unsigned char*)videoPixels, mRgbImageData, inputFrame->GetWidth()*inputFrame->GetHeight()*2);
+    YUV422UYVY_ToRGB24((const unsigned char*)videoPixels, mRgbImageData, inputFrame->GetWidth()*inputFrame->GetHeight()*2);
 
 
 	makeCurrent();
@@ -736,6 +783,8 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 	glDisable(GL_TEXTURE_2D);
 
     drawFrame();
+    
+    mFrameCount++;
 
     mMutex.unlock();
 	inputFrame->Release();

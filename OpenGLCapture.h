@@ -38,6 +38,8 @@
 #include <deque>
 #include <string>
 
+#include <sys/time.h>
+
 class CaptureDelegate;
 class PinnedMemoryAllocator;
 
@@ -60,6 +62,8 @@ public:
 
     int getDeviceList(std::vector<std::string>& devices);
     int getModeList(int device, std::vector<std::string>& modes);
+
+    unsigned int getTime();
 
 private:
 	bool CheckOpenGLExtensions();
@@ -122,6 +126,11 @@ private:
     unsigned int                            m_ibo;
     std::vector<float>                      m_vertices;
     std::vector<unsigned int>               m_indices;
+
+    //
+    BMDTimeValue m_startOfTime;
+    unsigned int m_lastFrameTime;
+    float m_displayFPS;
 };
 
 ////////////////////////////////////////////
