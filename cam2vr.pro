@@ -5,6 +5,8 @@ QT		+= opengl
 INCLUDEPATH =	include 
 LIBS		+= -lGLU -ldl
 
+@CONFIG += release@
+
 HEADERS 	=	include/DeckLinkAPIDispatch.cpp \
                         cam2vr.h \
                         OpenGLCapture.h \

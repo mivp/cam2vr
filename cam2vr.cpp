@@ -64,6 +64,11 @@ void Cam2VR::start()
 {
     if (!pOpenGLCapture->Start())
 		exit(0);
+
+    move(1920, 0);
+    resize(1920, 1080);
+    showFullScreen();
+    menuBar()->hide();
 }
 
 void Cam2VR::createActions()
@@ -128,6 +133,7 @@ void Cam2VR::captureStart()
     if (!pOpenGLCapture->InitDeckLink(m_device, m_mode))
         exit(0);
     start();
+    goFullScreen0();
 }
 
 void Cam2VR::captureStop()
@@ -208,6 +214,12 @@ void Cam2VR::goFullScreen1()
     showFullScreen();
 }
 
+void Cam2VR::goFullScreen2()
+{
+    setGeometry(1920, 0, 1920, 1080);
+    menuBar()->hide();
+}
+
 void Cam2VR::keyPressEvent(QKeyEvent *event)
 {
     qDebug() << "key pressed" << event->key();
@@ -223,13 +235,22 @@ void Cam2VR::keyPressEvent(QKeyEvent *event)
         break;
 
     case Qt::Key_0:
-        this->windowHandle()->setScreen(qApp->screens()[0]);
-        showFullScreen();
+        //this->windowHandle()->setScreen(qApp->screens()[0]);
+        //showFullScreen();
         break;
 
     case Qt::Key_1:
-        this->windowHandle()->setScreen(qApp->screens()[1]);
+        //this->windowHandle()->setScreen(qApp->screens()[1]);
+        //showFullScreen();
+        break;
+
+    case Qt::Key_2:
+        //this->windowHandle()->setScreen(qApp->screens()[0]);
+        //goFullScreen2();
+        move(1920, 0);
+        resize(1920, 1080);
         showFullScreen();
+        menuBar()->hide();
         break;
     }
 }

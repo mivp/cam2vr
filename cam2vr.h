@@ -58,6 +58,7 @@ private slots:
     void captureStop();
     void goFullScreen0();
     void goFullScreen1();
+    void goFullScreen2();
 
 private:
     void createActions();
