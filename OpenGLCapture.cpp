@@ -32,6 +32,9 @@
 #include <string>
 #include <sstream>
 
+#include <sys/time.h>
+#include <iostream>
+
 namespace patch
 {
     template < typename T > std::string to_string( const T& n )
@@ -42,6 +45,8 @@ namespace patch
     }
 }
 
+#define DROP_THRESHOLD 0.95
+
 OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	QGLWidget(parent), mParent(parent),
     mCaptureDelegate(NULL),
@@ -51,6 +56,7 @@ OpenGLCapture::OpenGLCapture(QWidget *parent) :
 	mHasNoInputSource(true),
 	mPinnedMemoryExtensionAvailable(false),
 	mTexture(0),
+    mFrameCount(0),
     //VR
     m_meshWidth(20), m_meshHeight(20), m_bufferScale(0.5)
 {
@@ -618,6 +624,12 @@ void OpenGLCapture::computeMeshIndices(int width, int height)
 }
 
 
+unsigned int OpenGLCapture::getTime() {
+    struct timeval tp;
+    gettimeofday(&tp, 0);
+    return (tp.tv_sec * 1000 + tp.tv_usec / 1000);
+}
+
 
 //
 // Update the captured video frame texture
@@ -625,6 +637,44 @@ void OpenGLCapture::computeMeshIndices(int width, int height)
 void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool hasNoInputSource)
 {
     mMutex.lock();
+
+    if (mFrameCount == 0) {
+       BMDTimeValue hframedur;
+       HRESULT h = inputFrame->GetHardwareReferenceTimestamp(mFrameTimescale, &m_startOfTime, &hframedur);
+       m_lastFrameTime = getTime();
+    }
+
+    // check if we need to skip this frame
+    bool skip = false;
+    BMDTimeScale htimeScale = mFrameTimescale;
+    BMDTimeValue hframeTime;
+    BMDTimeValue hframeDuration;
+    HRESULT h = inputFrame->GetHardwareReferenceTimestamp(htimeScale, &hframeTime, &hframeDuration);
+    if (h == S_OK) {
+        double frametime = (double)(hframeTime-m_startOfTime) / (double)hframeDuration; 
+        double instantfps = 1000.0/(getTime()-m_lastFrameTime);
+        if (frametime > mFrameCount) {
+            skip = true;
+            mFrameCount++;  
+        }
+        if (instantfps <= m_displayFPS*DROP_THRESHOLD) {
+            skip = true;
+            mFrameCount++;
+        }
+       m_lastFrameTime = getTime();
+    }
+    
+    if (skip) {
+       std::cout << ".";
+       mMutex.unlock();
+       return;
+    }
+   
+    if (m_displayFPS >= 50.0 && mFrameCount%2 == 0) {
+        mFrameCount++;
+        mMutex.unlock();
+        return;
+    }
 
 	mHasNoInputSource = hasNoInputSource;
 
@@ -665,6 +715,8 @@ void OpenGLCapture::VideoFrameArrived(IDeckLinkVideoInputFrame* inputFrame, bool
 	glDisable(GL_TEXTURE_2D);
 
     drawFrame();
+
+    mFrameCount++;
 
     mMutex.unlock();
 	inputFrame->Release();

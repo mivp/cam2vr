@@ -44,7 +44,7 @@ class PinnedMemoryAllocator;
 using namespace cam2vr;
 
 #define DEFAULT_DEVICE 0
-#define DEFAULT_MODE 11
+#define DEFAULT_MODE 15
 
 class OpenGLCapture : public QGLWidget
 {
@@ -60,6 +60,8 @@ public:
 
     int getDeviceList(std::vector<std::string>& devices);
     int getModeList(int device, std::vector<std::string>& modes);
+
+    unsigned int getTime();
 
 private:
 	bool CheckOpenGLExtensions();
@@ -120,6 +122,12 @@ private:
     unsigned int                            m_ibo;
     std::vector<float>                      m_vertices;
     std::vector<unsigned int>               m_indices;
+
+    //
+    BMDTimeValue m_startOfTime;
+    unsigned int m_lastFrameTime;
+    float m_displayFPS;
+    unsigned int mFrameCount;
 };
 
 ////////////////////////////////////////////

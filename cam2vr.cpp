@@ -64,6 +64,11 @@ void Cam2VR::start()
 {
     if (!pOpenGLCapture->Start())
 		exit(0);
+
+    move(1920, 0);
+    resize(1920, 1080);
+    showFullScreen();
+    menuBar()->hide();
 }
 
 void Cam2VR::createActions()
